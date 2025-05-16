@@ -3,3 +3,4 @@
 .terraform/
 *.iml
 *lock*
+terraform.tfvars

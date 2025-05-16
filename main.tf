@@ -1,9 +1,5 @@
-locals {
-  pub_sub_agent = "service-${data.google_project.default.number}@gcp-sa-pubsub.iam.gserviceaccount.com"
-}
-
 data "google_project" "default" {
-  project_id = "bdb-org-cicd"
+  project_id = var.project_id
 }
 
 resource "google_project_service" "apis" {
@@ -18,17 +14,6 @@ resource "google_project_service" "apis" {
   disable_dependent_services = true
 }
 
-resource "google_pubsub_topic_iam_member" "agent_dead_letter_access" {
-  for_each = toset([
-    "roles/pubsub.publisher",
-    "roles/pubsub.subscriber"
-  ])
-  member  = "serviceAccount:${local.pub_sub_agent}"
-  role    = each.value
-  topic   = google_pubsub_topic.dead_letter_topic.id
-  project = data.google_project.default.project_id
-}
-
 resource "google_service_account" "default" {
   project    = data.google_project.default.project_id
   account_id = "pubsub-bq-writer"
@@ -39,16 +24,6 @@ resource "google_bigquery_dataset_iam_member" "pubsub_bigquery_access" {
   dataset_id = google_bigquery_dataset.default.dataset_id
   member     = google_service_account.default.member
   role       = "roles/bigquery.admin"
-}
-
-resource "google_pubsub_topic" "dead_letter_topic" {
-  project = data.google_project.default.project_id
-  name    = "bq-conn-dead-topic"
-
-  message_storage_policy {
-    allowed_persistence_regions = ["europe-west1"]
-    enforce_in_transit          = true
-  }
 }
 
 resource "google_pubsub_topic" "default" {
@@ -138,16 +113,9 @@ resource "google_pubsub_subscription" "bq_push" {
     maximum_backoff = "600s"
   }
 
-  dead_letter_policy {
-    dead_letter_topic     = google_pubsub_topic.dead_letter_topic.id
-    max_delivery_attempts = 5
-  }
-
   depends_on = [
     google_bigquery_dataset_iam_member.pubsub_bigquery_access,
     google_bigquery_table.default,
     google_project_service.apis,
-    google_pubsub_topic.dead_letter_topic,
-    google_pubsub_topic_iam_member.agent_dead_letter_access
   ]
 }
